@@ -9,9 +9,8 @@ use std::{
     path::PathBuf,
     time::SystemTime,
 };
+use bytes::Bytes;
 use structopt::StructOpt;
-// use tokio::fs;
-// use tokio::io::AsyncBufReadExt;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "mqtt-recorder", about = "mqtt recorder written in rust")]
@@ -113,6 +112,7 @@ async fn main() {
     }
 
     let mut mqttoptions = MqttOptions::new(servername, &opt.address, opt.port);
+    mqttoptions.set_max_packet_size(1000 * 1024, 1000 * 1024);
 
     if let Some(cafile) = opt.cafile {
         let mut file = fs::OpenOptions::new();
@@ -172,11 +172,18 @@ async fn main() {
                                     2 => QoS::ExactlyOnce,
                                     _ => QoS::AtMostOnce,
                                 };
-                                let publish = Publish::new(
-                                    msg.topic,
+
+                                let base64 = base64::decode(msg.msg_b64).unwrap();
+
+                                let publish = Publish {
+                                    dup: false,
                                     qos,
-                                    base64::decode(msg.msg_b64).unwrap(),
-                                );
+                                    retain: msg.retain,
+                                    pkid: 0,
+                                    topic: msg.topic.into(),
+                                    payload: Bytes::from(base64),
+                                };
+
                                 let _e = requests_tx.send(publish.into()).await;
                             }
                         }
