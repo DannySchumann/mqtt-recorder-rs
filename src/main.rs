@@ -9,8 +9,13 @@ use std::{
     path::PathBuf,
     time::SystemTime,
 };
+use std::ops::Add;
+use std::time::Duration;
 use bytes::Bytes;
 use structopt::StructOpt;
+use tokio::time::Instant;
+
+const MIN_SLEEP: Duration = Duration::from_millis(1);
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "mqtt-recorder", about = "mqtt recorder written in rust")]
@@ -138,7 +143,9 @@ async fn main() {
     match opt.mode {
         Mode::Replay(replay) => {
             let (stop_tx, stop_rx) = std::sync::mpsc::channel();
-
+            let mut accumulated_durations = Duration::from_millis(0);
+            let mut start_replay = Instant::now();
+            let mut first_message_time = 0.0;
             // Sends the recorded messages
             tokio::spawn(async move {
                 // text
@@ -154,16 +161,29 @@ async fn main() {
                     for line in io::BufReader::new(&file).lines() {
                         if let Ok(line) = line {
                             let msg = serde_json::from_str::<MqttMessage>(&line);
+
                             if let Ok(msg) = msg {
                                 if previous < 0.0 {
+                                    start_replay = Instant::now();
+                                    first_message_time = msg.time;
                                     previous = msg.time;
                                 }
+                                let now = Instant::now();
+                                let replay_elapsed = Duration::from_secs_f64(
+                                    (msg.time - first_message_time) / replay.speed
+                                );
 
-                                tokio::time::sleep(std::time::Duration::from_millis(
-                                    ((msg.time - previous) * 1000.0 / replay.speed) as u64,
-                                ))
-                                .await;
-
+                                let last_packet_elapsed =  Duration::from_secs_f64((msg.time - previous) / replay.speed);
+                                
+                                let real_time_elapsed = start_replay.elapsed();
+                                let drift = replay_elapsed.as_millis() as i128 - real_time_elapsed.as_millis() as i128;
+                                println!("time: {:?}, msg.time: {:?}, previous: {:?}, replay elapsed: {:?}, realtime elapsed: {:?}, drift {:?} ms", now, msg.time, previous, replay_elapsed, real_time_elapsed, drift);
+                                if drift > last_packet_elapsed.as_millis() as i128 {
+                                    let before_sleep = Instant::now();
+                                    tokio::time::sleep(last_packet_elapsed).await;
+                                    println!("sleep {:?} to compensate drift (actual sleep {:?})", last_packet_elapsed, before_sleep.elapsed());
+                                }
+                                
                                 previous = msg.time;
 
                                 let qos = match msg.qos {
