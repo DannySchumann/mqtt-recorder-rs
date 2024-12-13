@@ -9,13 +9,10 @@ use std::{
     path::PathBuf,
     time::SystemTime,
 };
-use std::ops::Add;
 use std::time::Duration;
 use bytes::Bytes;
 use structopt::StructOpt;
 use tokio::time::Instant;
-
-const MIN_SLEEP: Duration = Duration::from_millis(1);
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "mqtt-recorder", about = "mqtt recorder written in rust")]
@@ -143,7 +140,6 @@ async fn main() {
     match opt.mode {
         Mode::Replay(replay) => {
             let (stop_tx, stop_rx) = std::sync::mpsc::channel();
-            let mut accumulated_durations = Duration::from_millis(0);
             let mut start_replay = Instant::now();
             let mut first_message_time = 0.0;
             // Sends the recorded messages
