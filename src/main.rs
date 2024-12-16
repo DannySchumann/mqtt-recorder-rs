@@ -47,7 +47,7 @@ pub enum Mode {
 
     // Replay values from an input file
     #[structopt(name = "replay")]
-    Replay(ReplayOtions),
+    Replay(ReplayOptions),
 }
 
 #[derive(Debug, StructOpt)]
@@ -61,7 +61,7 @@ pub struct RecordOptions {
 }
 
 #[derive(Debug, StructOpt)]
-pub struct ReplayOtions {
+pub struct ReplayOptions {
     #[structopt(short, long, default_value = "1.0")]
     // Speed of the playback, 2.0 makes it twice as fast
     speed: f64,
@@ -133,7 +133,7 @@ async fn main() {
     }
 
     mqttoptions.set_keep_alive(5);
-    let mut eventloop = EventLoop::new(mqttoptions, 20 as usize);
+    let mut eventloop = EventLoop::new(mqttoptions, 20usize);
     let requests_tx = eventloop.requests_tx.clone();
 
     // Enter recording mode and open file readonly
@@ -164,20 +164,18 @@ async fn main() {
                                     first_message_time = msg.time;
                                     previous = msg.time;
                                 }
-                                let now = Instant::now();
+                                let real_time_elapsed = start_replay.elapsed();
                                 let replay_elapsed = Duration::from_secs_f64(
                                     (msg.time - first_message_time) / replay.speed
                                 );
-
-                                let last_packet_elapsed =  Duration::from_secs_f64((msg.time - previous) / replay.speed);
                                 
-                                let real_time_elapsed = start_replay.elapsed();
                                 let drift = replay_elapsed.as_millis() as i128 - real_time_elapsed.as_millis() as i128;
-                                println!("time: {:?}, msg.time: {:?}, previous: {:?}, replay elapsed: {:?}, realtime elapsed: {:?}, drift {:?} ms", now, msg.time, previous, replay_elapsed, real_time_elapsed, drift);
-                                if drift > last_packet_elapsed.as_millis() as i128 {
+                                println!("time: {:?}, msg.time: {:?}, previous: {:?}, replay elapsed: {:?}, realtime elapsed: {:?}, drift {:?} ms",
+                                         Instant::now(), msg.time, previous, replay_elapsed, real_time_elapsed, drift);
+                                if drift > 0 {
                                     let before_sleep = Instant::now();
-                                    tokio::time::sleep(last_packet_elapsed).await;
-                                    println!("sleep {:?} to compensate drift (actual sleep {:?})", last_packet_elapsed, before_sleep.elapsed());
+                                    tokio::time::sleep(Duration::from_millis(drift as u64)).await;
+                                    println!("sleep {:?} to synchronize (actual sleep {:?})", drift, before_sleep.elapsed());
                                 }
                                 
                                 previous = msg.time;
