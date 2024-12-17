@@ -163,6 +163,7 @@ async fn main() {
                                     start_replay = Instant::now();
                                     first_message_time = msg.time;
                                     previous = msg.time;
+                                    info!("start of replay round at {:?}", start_replay);
                                 }
                                 let real_time_elapsed = start_replay.elapsed();
                                 let replay_elapsed = Duration::from_secs_f64(
@@ -170,12 +171,15 @@ async fn main() {
                                 );
                                 
                                 let drift = replay_elapsed.as_millis() as i128 - real_time_elapsed.as_millis() as i128;
-                                println!("time: {:?}, msg.time: {:?}, previous: {:?}, replay elapsed: {:?}, realtime elapsed: {:?}, drift {:?} ms",
+
+                                debug!("time: {:?}, msg.time: {:?}, previous: {:?}, replay elapsed: {:?}, realtime elapsed: {:?}, drift {:?} ms",
                                          Instant::now(), msg.time, previous, replay_elapsed, real_time_elapsed, drift);
                                 if drift > 0 {
                                     let before_sleep = Instant::now();
                                     tokio::time::sleep(Duration::from_millis(drift as u64)).await;
-                                    println!("sleep {:?} to synchronize (actual sleep {:?})", drift, before_sleep.elapsed());
+                                    debug!("sleep {:?} to synchronize (actual sleep {:?})", drift, before_sleep.elapsed());
+                                } else if drift < -50 { 
+                                    warn!("Replay is delayed. Drift: {:?} ms", drift);
                                 }
                                 
                                 previous = msg.time;
